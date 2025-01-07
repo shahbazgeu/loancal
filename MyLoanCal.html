@@ -1,0 +1,322 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Creative EMI Calculator</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.4.0/jspdf.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.25/jspdf.plugin.autotable.min.js"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background-image: url('https://source.unsplash.com/1600x900/?finance,abstract');
+            background-size: cover;
+            background-attachment: fixed;
+            margin: 0;
+            padding: 0;
+            color: #fff;
+        }
+        .calculator-container {
+            background: rgba(0, 0, 0, 0.8);
+            border-radius: 10px;
+            padding: 20px;
+            margin: 50px auto;
+            width: 90%;
+            max-width: 600px;
+            box-shadow: 0 4px 10px rgba(0, 0, 0, 0.5);
+        }
+        .form-group {
+            margin-bottom: 15px;
+        }
+        label {
+            display: block;
+            margin-bottom: 5px;
+        }
+        input, select {
+            width: 100%;
+            padding: 10px;
+            border: none;
+            border-radius: 5px;
+            font-size: 16px;
+        }
+        .btn {
+            background: #007BFF;
+            color: white;
+            padding: 10px 20px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 16px;
+            margin-top: 10px;
+            display: inline-block;
+        }
+        .btn:hover {
+            background: #0056b3;
+        }
+        .results p {
+            font-size: 18px;
+            margin: 10px 0;
+        }
+        .chart-container, .monthly-statement {
+            margin-top: 20px;
+            background: rgba(255, 255, 255, 0.1);
+            padding: 15px;
+            border-radius: 10px;
+        }
+        .monthly-statement table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+        .monthly-statement th, .monthly-statement td {
+            border: 1px solid #fff;
+            padding: 10px;
+            text-align: center;
+        }
+        .monthly-statement th {
+            background: rgba(0, 123, 255, 0.7);
+        }
+        .export-buttons {
+            margin-top: 10px;
+        }
+    </style>
+</head>
+<body>
+    <div class="calculator-container">
+        <h1>Creative EMI Calculator</h1>
+        <div class="form-group">
+            <label for="calcOption">Select Calculation:</label>
+            <select id="calcOption" onchange="updateInputs()">
+                <option value="emi">Calculate EMI</option>
+                <option value="loanAmount">Calculate Loan Amount</option>
+                <option value="interestRate">Calculate Interest Rate</option>
+                <option value="loanTenure">Calculate Loan Tenure</option>
+            </select>
+        </div>
+        <div class="form-group">
+            <label for="loanAmount">Loan Amount (₹):</label>
+            <input type="number" id="loanAmount" placeholder="Enter loan amount">
+        </div>
+        <div class="form-group">
+            <label for="interestRate">Annual Interest Rate (%):</label>
+            <input type="number" id="interestRate" placeholder="Enter interest rate">
+        </div>
+        <div class="form-group">
+            <label for="loanTenure">Loan Tenure (Years):</label>
+            <input type="number" id="loanTenure" placeholder="Enter loan tenure">
+        </div>
+        <div class="form-group">
+            <label for="emi">EMI (₹):</label>
+            <input type="number" id="emi" placeholder="Enter EMI">
+        </div>
+        <button class="btn" onclick="calculate()">Calculate</button>
+        <div class="results">
+            <p id="result"></p>
+            <p id="emiResult"></p>
+            <p id="totalInterestResult"></p>
+            <p id="totalPaymentResult"></p>
+        </div>
+        <div class="chart-container">
+            <canvas id="emiPieChart"></canvas>
+        </div>
+        <div class="monthly-statement">
+            <h3>Monthly Statement</h3>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Month</th>
+                        <th>Principal Paid (₹)</th>
+                        <th>Interest Paid (₹)</th>
+                        <th>Balance (₹)</th>
+                    </tr>
+                </thead>
+                <tbody id="monthlyStatementBody"></tbody>
+            </table>
+            <div class="export-buttons">
+                <button class="btn" onclick="exportToCSV()">Export to CSV</button>
+                <button class="btn" onclick="exportToPDF()">Export to PDF</button>
+                <button class="btn" onclick="exportToExcel()">Export to Excel</button>
+            </div>
+        </div>
+    </div>
+    <script>
+        // All calculation, chart, and table generation code (same as before)
+        let chartInstance; // To handle pie chart updates
+
+        function updateInputs() {
+            const calcOption = document.getElementById('calcOption').value;
+
+            // Enable all inputs first
+            document.getElementById('loanAmount').disabled = false;
+            document.getElementById('interestRate').disabled = false;
+            document.getElementById('loanTenure').disabled = false;
+            document.getElementById('emi').disabled = false;
+
+            // Disable the input for the selected option
+            if (calcOption === 'emi') {
+                document.getElementById('emi').disabled = true;
+            } else if (calcOption === 'loanAmount') {
+                document.getElementById('loanAmount').disabled = true;
+            } else if (calcOption === 'interestRate') {
+                document.getElementById('interestRate').disabled = true;
+            } else if (calcOption === 'loanTenure') {
+                document.getElementById('loanTenure').disabled = true;
+            }
+        }
+
+        function calculate() {
+            const calcOption = document.getElementById('calcOption').value;
+
+            // Get input values
+            const loanAmount = parseFloat(document.getElementById('loanAmount').value) || 0;
+            const annualInterestRate = parseFloat(document.getElementById('interestRate').value) || 0;
+            const loanTenureYears = parseFloat(document.getElementById('loanTenure').value) || 0;
+            const emi = parseFloat(document.getElementById('emi').value) || 0;
+
+            const loanTenureMonths = loanTenureYears * 12;
+            let result = '';
+            let monthlyInterestRate = annualInterestRate / 12 / 100;
+
+            if (calcOption === 'emi') {
+                const emiCalculated = loanAmount * monthlyInterestRate * Math.pow(1 + monthlyInterestRate, loanTenureMonths) /
+                    (Math.pow(1 + monthlyInterestRate, loanTenureMonths) - 1);
+                result = `Monthly EMI: ₹${emiCalculated.toFixed(2)}`;
+                renderChartsAndTables(loanAmount, loanTenureMonths, emiCalculated, monthlyInterestRate);
+            } else if (calcOption === 'loanAmount') {
+                const loanAmountCalculated = emi * (Math.pow(1 + monthlyInterestRate, loanTenureMonths) - 1) /
+                    (monthlyInterestRate * Math.pow(1 + monthlyInterestRate, loanTenureMonths));
+                result = `Loan Amount: ₹${loanAmountCalculated.toFixed(2)}`;
+                renderChartsAndTables(loanAmountCalculated, loanTenureMonths, emi, monthlyInterestRate);
+            } else if (calcOption === 'interestRate') {
+                let low = 0, high = 100, calculatedEMI = 0;
+
+                // Binary search for interest rate
+                while (high - low > 0.0001) {
+                    monthlyInterestRate = (low + high) / 2 / 12 / 100;
+                    calculatedEMI = loanAmount * monthlyInterestRate * Math.pow(1 + monthlyInterestRate, loanTenureMonths) /
+                                    (Math.pow(1 + monthlyInterestRate, loanTenureMonths) - 1);
+                    if (calculatedEMI > emi) {
+                        high = (low + high) / 2;
+                    } else {
+                        low = (low + high) / 2;
+                    }
+                }
+                result = `Annual Interest Rate: ${(monthlyInterestRate * 12 * 100).toFixed(2)}%`;
+                renderChartsAndTables(loanAmount, loanTenureMonths, emi, monthlyInterestRate);
+            } else if (calcOption === 'loanTenure') {
+                const tenureMonths = Math.log(emi / (emi - (loanAmount * monthlyInterestRate))) / Math.log(1 + monthlyInterestRate);
+                result = `Loan Tenure: ${(tenureMonths / 12).toFixed(2)} years (${Math.ceil(tenureMonths)} months)`;
+                renderChartsAndTables(loanAmount, Math.ceil(tenureMonths), emi, monthlyInterestRate);
+            }
+
+            document.getElementById('result').textContent = result;
+        }
+
+        function renderChartsAndTables(principal, months, emi, monthlyRate) {
+            const totalPayment = emi * months;
+            const totalInterest = totalPayment - principal;
+
+            document.getElementById('emiResult').textContent = `Monthly EMI: ₹${emi.toFixed(2)}`;
+            document.getElementById('totalInterestResult').textContent = `Total Interest Paid: ₹${totalInterest.toFixed(2)}`;
+            document.getElementById('totalPaymentResult').textContent = `Total Payment: ₹${totalPayment.toFixed(2)}`;
+
+            renderPieChart(principal, totalInterest);
+            generateMonthlyStatement(principal, monthlyRate, emi, months);
+        }
+
+        function renderPieChart(principal, interest) {
+            const ctx = document.getElementById('emiPieChart').getContext('2d');
+            if (chartInstance) {
+                chartInstance.destroy(); // Clear the previous chart
+            }
+            chartInstance = new Chart(ctx, {
+                type: 'pie',
+                data: {
+                    labels: ['Principal Amount', 'Total Interest'],
+                    datasets: [{
+                        data: [principal, interest],
+                        backgroundColor: ['#007BFF', '#FF5733']
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    plugins: {
+                        legend: {
+                            position: 'top'
+                        }
+                    }
+                }
+            });
+        }
+
+        function generateMonthlyStatement(loanAmount, monthlyInterestRate, emi, months) {
+            const tbody = document.getElementById('monthlyStatementBody');
+            tbody.innerHTML = ''; // Clear previous data
+
+            let balance = loanAmount;
+            for (let month = 1; month <= months; month++) {
+                const interestPaid = balance * monthlyInterestRate;
+                const principalPaid = emi - interestPaid;
+                balance -= principalPaid;
+
+                tbody.innerHTML += `
+                    <tr>
+                        <td>${month}</td>
+                        <td>₹${principalPaid.toFixed(2)}</td>
+                        <td>₹${interestPaid.toFixed(2)}</td>
+                        <td>₹${Math.max(balance, 0).toFixed(2)}</td>
+                    </tr>
+                `;
+            }
+        }
+        function exportToCSV() {
+            const rows = [['Month', 'Principal Paid (₹)', 'Interest Paid (₹)', 'Balance (₹)']];
+            document.querySelectorAll('#monthlyStatementBody tr').forEach(row => {
+                const cols = Array.from(row.querySelectorAll('td')).map(td => td.textContent);
+                rows.push(cols);
+            });
+
+            const csvContent = rows.map(e => e.join(",")).join("\n");
+            const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+            const link = document.createElement('a');
+            link.href = URL.createObjectURL(blob);
+            link.download = 'monthly_statement.csv';
+            link.click();
+        }
+
+        function exportToPDF() {
+    const { jsPDF } = window.jspdf;
+    const pdf = new jsPDF();
+
+    // Add a title to the PDF
+    pdf.text('Monthly Statement', 10, 10);
+
+    // Collect table data
+    const rows = [];
+    document.querySelectorAll('#monthlyStatementBody tr').forEach(row => {
+        const cols = Array.from(row.querySelectorAll('td')).map(td => td.textContent);
+        rows.push(cols);
+    });
+
+    // Use autoTable to generate the table
+    pdf.autoTable({
+        head: [['Month', 'Principal Paid (₹)', 'Interest Paid (₹)', 'Balance (₹)']],
+        body: rows,
+        startY: 20,
+        styles: { fontSize: 10 },
+    });
+
+    // Save the PDF
+    pdf.save('monthly_statement.pdf');
+}
+
+        function exportToExcel() {
+            const ws = XLSX.utils.table_to_sheet(document.querySelector('.monthly-statement table'));
+            const wb = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(wb, ws, 'Monthly Statement');
+            XLSX.writeFile(wb, 'monthly_statement.xlsx');
+        }
+    </script>
+</body>
+</html>
